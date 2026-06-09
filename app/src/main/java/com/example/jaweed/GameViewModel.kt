@@ -1,16 +1,16 @@
 package com.example.jaweed
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
-private val allWordsList: List<String> = listOf(
+private val allWords = listOf(
     "android", "applications", "architecture", "scramble",
     "composable", "viewmodel", "lifecycle", "jetpack",
     "kotlin", "stateflow"
 )
-
-const val MAX_NO_OF_WORDS = 10
 
 private fun scrambleWord(word: String): String {
     val chars = word.toCharArray()
@@ -24,52 +24,63 @@ private fun scrambleWord(word: String): String {
 
 class GameViewModel : ViewModel() {
 
-    private val _currentScrambledWord = MutableLiveData<String>()
-    val currentScrambledWord: LiveData<String> = _currentScrambledWord
+    private val _uiState = MutableStateFlow(GameUiState())
+    val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
 
-    private val _score = MutableLiveData(0)
-    val score: LiveData<Int> = _score
-
-    private val _currentWordCount = MutableLiveData(0)
-    val currentWordCount: LiveData<Int> = _currentWordCount
-
-    private var wordsList = allWordsList.toMutableList()
+    private var wordList = allWords.toMutableList()
     private lateinit var currentWord: String
 
     init {
-        getNextWord()
+        resetGame()
     }
 
-    private fun getNextWord() {
-        if (wordsList.isNotEmpty()) {
-            currentWord = wordsList.removeAt(0)
-            _currentScrambledWord.value = scrambleWord(currentWord)
-            _currentWordCount.value = (_currentWordCount.value ?: 0) + 1
-        }
-    }
-
-    fun isUserWordCorrect(playerWord: String): Boolean {
-        return playerWord.equals(currentWord, ignoreCase = true)
-    }
-
-    fun nextWord(): Boolean {
-        return if (_currentWordCount.value == MAX_NO_OF_WORDS) {
-            false
+    fun submitWord(guess: String) {
+        if (guess.equals(currentWord, ignoreCase = true)) {
+            val newScore = _uiState.value.score + 20
+            updateNextWord(newScore)
         } else {
-            getNextWord()
-            true
+            _uiState.update { it.copy(isGuessedWordWrong = true) }
         }
     }
 
-    fun increaseScore() {
-        _score.value = (_score.value ?: 0) + 20
+    fun skipWord() {
+        updateNextWord(_uiState.value.score)
     }
 
-    fun reinitializeData() {
-        _score.value = 0
-        _currentWordCount.value = 0
-        wordsList = allWordsList.toMutableList()
-        wordsList.shuffle()
-        getNextWord()
+    fun resetGame() {
+        wordList = allWords.toMutableList()
+        wordList.shuffle()
+        _uiState.update { GameUiState() }
+        pickNextWord()
+    }
+
+    private fun updateNextWord(newScore: Int) {
+        if (_uiState.value.currentWordCount == allWords.size) {
+            _uiState.update {
+                it.copy(
+                    score = newScore,
+                    isGuessedWordWrong = false,
+                    isGameOver = true
+                )
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    score = newScore,
+                    currentWordCount = it.currentWordCount + 1,
+                    isGuessedWordWrong = false
+                )
+            }
+            pickNextWord()
+        }
+    }
+
+    private fun pickNextWord() {
+        if (wordList.isNotEmpty()) {
+            currentWord = wordList.removeAt(0)
+            _uiState.update {
+                it.copy(currentScrambledWord = scrambleWord(currentWord))
+            }
+        }
     }
 }
